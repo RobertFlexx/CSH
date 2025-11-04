@@ -6,7 +6,7 @@
 require "time"
 
 module Scsh
-  SCSH_VERSION = "0.1.0-BETA"
+  SCSH_VERSION = "0.1.1-BETA"
 
   # ---------------- State ----------------
   @@child_pids        = [] of Int32
