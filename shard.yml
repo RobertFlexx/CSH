@@ -1,0 +1,17 @@
+name: scsh
+version: 0.1.0
+
+authors:
+  - RobertFlexx <robertwilliamnelson2008@gmail.com>
+
+targets:
+  scsh:
+    main: src/scsh.cr
+
+dependencies:
+  readline:
+    github: crystal-lang/crystal-readline
+
+crystal: '>= 1.14.0'
+
+license: MIT
