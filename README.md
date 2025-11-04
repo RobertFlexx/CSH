@@ -3,7 +3,7 @@
 `scsh` is a tiny experimental shell written in Crystal.
 It is **not** the Ruby-based `srsh` — this is its own thing.
 
-This is version **0.1.0-BETA**.
+This is version **0.1.1-BETA**.
 It’s early, it’s rough, and it will probably change a lot.
 
 The code is written by **RobertFlexx**, with some comment / doc help from ChatGPT.
