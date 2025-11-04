@@ -9,11 +9,12 @@ module Scsh
   SCSH_VERSION = "0.1.0-BETA"
 
   # ---------------- State ----------------
-  @@child_pids    = [] of Int32
-  @@aliases       = {} of String => String
-  @@history       = [] of String
-  @@prompt_color  = 33
-  @@current_quote = "Keep calm and code on."
+  @@child_pids        = [] of Int32
+  @@aliases           = {} of String => String
+  @@history           = [] of String
+  @@prompt_color      = 33
+  @@current_quote     = "Keep calm and code on."
+  @@last_render_rows  = 1
 
   # ---------------- Init: env & CWD ----------------
   ENV["SHELL"] = "scsh-#{SCSH_VERSION}"
@@ -118,6 +119,11 @@ module Scsh
         io << color(ch.to_s, codes[i % len])
       end
     end
+  end
+
+  # Strip ANSI color codes (for width calculations)
+  def self.strip_ansi(str : String) : String
+    str.gsub(/\e\[[0-9;]*m/, "")
   end
 
   # Robust $VAR expansion
@@ -716,22 +722,27 @@ module Scsh
   end
 
   def self.terminal_width : Int32
+    begin
+      io = IO::Memory.new
+      Process.run("stty", ["size"],
+        input:  Process::Redirect::Inherit,
+        output: io,
+        error:  Process::Redirect::Close
+      )
+      parts = io.to_s.split
+      if parts.size == 2
+        cols = parts[1].to_i
+        return cols if cols > 0
+      end
+    rescue
+    end
+
     if cols_env = ENV["COLUMNS"]?
       if v = cols_env.to_i?
         return v if v > 0
       end
     end
-    begin
-      io = IO::Memory.new
-      Process.run("tput", ["cols"],
-        output: io,
-        error:  Process::Redirect::Close
-      )
-      s = io.to_s.strip
-      cols = s.to_i
-      return cols if cols > 0
-    rescue
-    end
+
     80
   end
 
@@ -773,7 +784,6 @@ module Scsh
           if dir == "."
             entry
           else
-            # Reconstruct relative to the originally-typed prefix
             if prefix.includes?('/')
               File.join(File.dirname(prefix), entry)
             else
@@ -860,8 +870,8 @@ module Scsh
   end
 
   def self.render_line(prompt_str : String, buffer : String, cursor : Int32, show_ghost : Bool = true)
-    buf    = buffer
-    cur    = cursor
+    buf = buffer
+    cur = cursor
     cur = 0 if cur < 0
     cur = buf.size if cur > buf.size
 
@@ -872,8 +882,28 @@ module Scsh
       end
     end
 
-    STDOUT.print "\r"
-    STDOUT.print "\e[0K"
+    # ---- Clear previous logical line (all rows it used) ----
+    rows_to_clear = @@last_render_rows
+    if rows_to_clear > 1
+      # Move to start of first row of previous render
+      STDOUT.print "\r"
+      STDOUT.print "\e[#{rows_to_clear - 1}A" if rows_to_clear > 1
+
+      # Clear each row
+      rows_to_clear.times do |i|
+        STDOUT.print "\e[0K"
+        STDOUT.print "\n" if i < rows_to_clear - 1
+      end
+
+      # Move back up to first row
+      STDOUT.print "\r"
+      STDOUT.print "\e[#{rows_to_clear - 1}A" if rows_to_clear > 1
+    else
+      STDOUT.print "\r"
+      STDOUT.print "\e[0K"
+    end
+
+    # ---- Draw new line ----
     STDOUT.print prompt_str
     STDOUT.print buf
     STDOUT.print color(ghost_tail, "2") unless ghost_tail.empty?
@@ -881,6 +911,14 @@ module Scsh
     move_left = ghost_tail.size + (buf.size - cur)
     STDOUT.print "\e[#{move_left}D" if move_left > 0
     STDOUT.flush
+
+    # ---- Recompute how many rows this logical line occupies ----
+    visible_line = strip_ansi(prompt_str) + strip_ansi(buf) + ghost_tail
+    width = terminal_width
+    cols  = width > 0 ? width : 80
+    rows  = (visible_line.size + cols - 1) // cols
+    rows  = 1 if rows < 1
+    @@last_render_rows = rows
   end
 
   def self.handle_tab_completion(prompt_str : String, buffer : String, cursor : Int32, last_tab_prefix : String?, tab_cycle : Int32) : {String, Int32, String?, Int32, Bool}
@@ -975,6 +1013,7 @@ module Scsh
     last_tab_prefix : String? = nil
     tab_cycle = 0
 
+    @@last_render_rows = 1
     render_line(prompt_str, buffer, cursor)
 
     status = InputStatus::Ok

@@ -25,7 +25,7 @@ cd scsh
 ### Build (recommended)
 
 ```console
-crystal build scsh.cr -o scsh --release
+crystal build src/scsh.cr -o scsh --release
 ```
 
 ### Or run directly (dev/testing)
